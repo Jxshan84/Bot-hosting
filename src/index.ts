@@ -5,6 +5,7 @@ import dotenv from 'dotenv';
 import { WebSocketServer, WebSocket } from 'ws';
 import Docker from 'dockerode';
 import { ContainerManager } from './ContainerManager';
+import { FileManager } from './FileManager';
 
 dotenv.config();
 
@@ -16,13 +17,15 @@ const docker = new Docker({ socketPath: '/var/run/docker.sock' });
 app.use(cors());
 app.use(express.json());
 
-// 1. Create a new bot container
+// 1. Create bot directory & container
 app.post('/api/bots', async (req: Request, res: Response) => {
   try {
     const { botId, ramLimitMb, cpuCount, env } = req.body;
     if (!botId) {
       return res.status(400).json({ error: 'botId is required' });
     }
+
+    await FileManager.initBotDirectory(botId);
 
     const container = await ContainerManager.createBot({
       botId,
@@ -57,7 +60,7 @@ app.post('/api/bots/:id/stop', async (req: Request, res: Response) => {
   }
 });
 
-// 4. Live resource stats (RAM, CPU)
+// 4. Live resource stats
 app.get('/api/bots/:id/stats', async (req: Request, res: Response) => {
   try {
     const stats = await ContainerManager.getBotStats(req.params.id);
@@ -67,7 +70,60 @@ app.get('/api/bots/:id/stats', async (req: Request, res: Response) => {
   }
 });
 
-// 5. Realtime Live Terminal / Console (Docker Stream -> WebSocket)
+// 5. List files inside bot directory
+app.get('/api/bots/:botId/files', async (req: Request, res: Response) => {
+  try {
+    const subPath = (req.query.path as string) || '';
+    const files = await FileManager.listFiles(req.params.botId, subPath);
+    res.json({ files });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 6. Read specific file content
+app.get('/api/bots/:botId/files/content', async (req: Request, res: Response) => {
+  try {
+    const filePath = req.query.path as string;
+    if (!filePath) {
+      return res.status(400).json({ error: 'Path query is required' });
+    }
+    const content = await FileManager.readFile(req.params.botId, filePath);
+    res.json({ content });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 7. Save file content
+app.post('/api/bots/:botId/files/save', async (req: Request, res: Response) => {
+  try {
+    const { path: filePath, content } = req.body;
+    if (!filePath || content === undefined) {
+      return res.status(400).json({ error: 'path and content are required' });
+    }
+    await FileManager.saveFile(req.params.botId, filePath, content);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 8. Delete file or directory
+app.delete('/api/bots/:botId/files', async (req: Request, res: Response) => {
+  try {
+    const targetPath = req.query.path as string;
+    if (!targetPath) {
+      return res.status(400).json({ error: 'Path query is required' });
+    }
+    await FileManager.deleteItem(req.params.botId, targetPath);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 9. Realtime Console Stream
 wss.on('connection', (ws: WebSocket, req) => {
   const urlParams = new URLSearchParams(req.url?.split('?')[1]);
   const containerId = urlParams.get('containerId');
@@ -79,7 +135,6 @@ wss.on('connection', (ws: WebSocket, req) => {
 
   const container = docker.getContainer(containerId);
 
-  // Attach interactive shell stream
   container.attach(
     { stream: true, stdout: true, stderr: true, stdin: true },
     (err, stream) => {
@@ -89,12 +144,10 @@ wss.on('connection', (ws: WebSocket, req) => {
         return;
       }
 
-      // Container output -> Browser xterm.js
       stream.on('data', (chunk: Buffer) => {
         ws.send(chunk.toString('utf-8'));
       });
 
-      // Browser keystrokes -> Container input
       ws.on('message', (data: string) => {
         stream.write(data);
       });
@@ -110,4 +163,3 @@ const PORT = process.env.PORT || 4000;
 server.listen(PORT, () => {
   console.log(`Bot Hosting Daemon running on port ${PORT}`);
 });
-        
