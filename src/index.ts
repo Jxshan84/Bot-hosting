@@ -8,7 +8,7 @@ const docker = new Docker({ socketPath: '/var/run/docker.sock' });
 app.use(cors({ origin: '*' }));
 app.use(express.json());
 
-// 1. Live Stats & Real-time Status Check
+// 1. Live Stats & Status Route
 app.get('/api/bots/:id/stats', async (req: Request, res: Response) => {
   try {
     const container = docker.getContainer(req.params.id);
@@ -41,7 +41,7 @@ app.get('/api/bots/:id/stats', async (req: Request, res: Response) => {
   }
 });
 
-// 2. Start Bot (304 Handled)
+// 2. Start Bot (304 bypass)
 app.post('/api/bots/:id/start', async (req: Request, res: Response) => {
   try {
     const container = docker.getContainer(req.params.id);
@@ -55,7 +55,7 @@ app.post('/api/bots/:id/start', async (req: Request, res: Response) => {
   }
 });
 
-// 3. Stop Bot (304 Handled)
+// 3. Stop Bot (304 bypass)
 app.post('/api/bots/:id/stop', async (req: Request, res: Response) => {
   try {
     const container = docker.getContainer(req.params.id);
@@ -69,7 +69,7 @@ app.post('/api/bots/:id/stop', async (req: Request, res: Response) => {
   }
 });
 
-// 4. Console Logs
+// 4. Console Logs Route
 app.get('/api/bots/:id/logs', async (req: Request, res: Response) => {
   try {
     const container = docker.getContainer(req.params.id);
