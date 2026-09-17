@@ -4,6 +4,9 @@
     "module": "commonjs",
     "rootDir": "./src",
     "outDir": "./dist",
+    "noImplicitAny": false,
+"useUnknownInCatchVariables": false
+
     "moduleResolution": "node",
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
